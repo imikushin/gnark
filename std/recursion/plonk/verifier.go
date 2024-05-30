@@ -1174,15 +1174,14 @@ func (v *Verifier[FR, G1El, G2El, GtEl]) deriveRandomness(fs *fiatshamir.Transcr
 func (v *Verifier[FR, G1El, G2El, GtEl]) fixedExpN(n frontend.Variable, s *emulated.Element[FR]) *emulated.Element[FR] {
 	// assume circuit of maximum size 2**30.
 	const maxExpBits = 30
-	// n is power of two.
+	res := v.scalarApi.One()
+	acc := s
 	nBits := bits.ToBinary(v.api, n, bits.WithNbDigits(maxExpBits))
-	res := v.scalarApi.Select(nBits[0], s, v.scalarApi.Zero())
-	acc := v.scalarApi.Mul(s, s)
-	for i := 1; i < maxExpBits-1; i++ {
-		res = v.scalarApi.Select(nBits[i], acc, res)
+	for i := 0; i < maxExpBits-1; i++ {
+		mul := v.scalarApi.Mul(acc, res)
+		res = v.scalarApi.Select(nBits[i], mul, res)
 		acc = v.scalarApi.Mul(acc, acc)
 	}
-	res = v.scalarApi.Select(nBits[maxExpBits-1], acc, res)
 	return res
 }
 
