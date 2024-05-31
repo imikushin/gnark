@@ -26,6 +26,7 @@ import (
 	"github.com/consensys/gnark/std/algebra/native/sw_bls24315"
 	"github.com/consensys/gnark/std/commitments/kzg"
 	fiatshamir "github.com/consensys/gnark/std/fiat-shamir"
+	"github.com/consensys/gnark/std/hash"
 	"github.com/consensys/gnark/std/math/bits"
 	"github.com/consensys/gnark/std/math/emulated"
 	"github.com/consensys/gnark/std/recursion"
@@ -855,17 +856,7 @@ func (v *Verifier[FR, G1El, G2El, GtEl]) PrepareVerification(vk VerifyingKey[FR,
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		for i := range vk.CommitmentConstraintIndexes {
-			li := v.computeIthLagrangeAtZeta(v.api.Add(vk.CommitmentConstraintIndexes[i], vk.NbPublicVariables), zeta, zetaPowerN, vk)
-			marshalledCommitment := v.curve.MarshalG1(proof.Bsb22Commitments[i].G1El)
-			hashToField.Write(marshalledCommitment...)
-			hashedCmt := hashToField.Sum()
-			hashedCmtBits := bits.ToBinary(v.api, hashedCmt, bits.WithNbDigits(fr.Modulus().BitLen()))
-			emulatedHashedCmt := v.scalarApi.FromBits(hashedCmtBits...)
-			xiLi := v.scalarApi.Mul(emulatedHashedCmt, li)
-			hashToField.Reset()
-			pi = v.scalarApi.Add(pi, xiLi)
-		}
+		pi = v.addHashedBsb22CommitmentEvalsToPI(vk, proof, zeta, zetaPowerN, hashToField, fr, pi)
 	}
 
 	l := proof.BatchedProof.ClaimedValues[1]
@@ -1016,6 +1007,29 @@ func (v *Verifier[FR, G1El, G2El, GtEl]) PrepareVerification(vk VerifyingKey[FR,
 	resPoints := []emulated.Element[FR]{*zeta, *shiftedZeta}
 
 	return resCommitments, resProofs, resPoints, nil
+}
+
+func (v *Verifier[FR, G1El, G2El, GtEl]) addHashedBsb22CommitmentEvalsToPI(
+	vk VerifyingKey[FR, G1El, G2El],
+	proof Proof[FR, G1El, G2El],
+	zeta *emulated.Element[FR],
+	zetaPowerN *emulated.Element[FR],
+	hashToField hash.FieldHasher,
+	fr FR,
+	pi *emulated.Element[FR],
+) *emulated.Element[FR] {
+	for i := range vk.CommitmentConstraintIndexes {
+		li := v.computeIthLagrangeAtZeta(v.api.Add(vk.CommitmentConstraintIndexes[i], vk.NbPublicVariables), zeta, zetaPowerN, vk)
+		marshalledCommitment := v.curve.MarshalG1(proof.Bsb22Commitments[i].G1El)
+		hashToField.Write(marshalledCommitment...)
+		hashedCmt := hashToField.Sum()
+		hashedCmtBits := bits.ToBinary(v.api, hashedCmt, bits.WithNbDigits(fr.Modulus().BitLen()))
+		emulatedHashedCmt := v.scalarApi.FromBits(hashedCmtBits...)
+		xiLi := v.scalarApi.Mul(emulatedHashedCmt, li)
+		hashToField.Reset()
+		pi = v.scalarApi.Add(pi, xiLi)
+	}
+	return pi
 }
 
 // AssertProof asserts that the SNARK proof holds for the given witness and
